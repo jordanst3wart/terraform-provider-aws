@@ -13,13 +13,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/workmail"
 	awstypes "github.com/aws/aws-sdk-go-v2/service/workmail/types"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
-	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	sdkid "github.com/hashicorp/terraform-plugin-sdk/v2/helper/id"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
@@ -28,20 +26,12 @@ import (
 	"github.com/hashicorp/terraform-provider-aws/internal/errs/fwdiag"
 	"github.com/hashicorp/terraform-provider-aws/internal/framework"
 	"github.com/hashicorp/terraform-provider-aws/internal/framework/flex"
-	fwtypes "github.com/hashicorp/terraform-provider-aws/internal/framework/types"
 	"github.com/hashicorp/terraform-provider-aws/internal/smerr"
 	"github.com/hashicorp/terraform-provider-aws/internal/sweep"
 	sweepfw "github.com/hashicorp/terraform-provider-aws/internal/sweep/framework"
 	"github.com/hashicorp/terraform-provider-aws/internal/tfresource"
 	"github.com/hashicorp/terraform-provider-aws/names"
 )
-
-// TIP: ==== FILE STRUCTURE ====
-// 1. Package declaration
-// 2. Imports
-// 3. Main resource struct with schema method
-// 4. Create, read, update, delete methods (in that order)
-// 5. Other functions (flatteners, expanders, waiters, finders, etc.)
 
 // @FrameworkResource("aws_workmail_organization", name="Organization")
 func newResourceOrganization(_ context.Context) (resource.ResourceWithConfigure, error) {
@@ -64,7 +54,7 @@ type resourceOrganization struct {
 }
 
 // Schema leaving out directory_id, kms_key_arn, domains, and enable_interoperability until later
-func (r *resourceOrganization) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *resourceOrganization) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			names.AttrARN: framework.ARNAttributeComputedOnly(),
@@ -86,15 +76,6 @@ func (r *resourceOrganization) Schema(ctx context.Context, req resource.SchemaRe
 }
 
 func (r *resourceOrganization) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	// TIP: ==== RESOURCE CREATE ====
-	// Generally, the Create function should do the following things. Make
-	// sure there is a good reason if you don't do one of these.
-	//
-	// 3. Populate a create input structure
-	// 5. Using the output from the create function, set the minimum arguments
-	//    and attributes for the Read function to work, as well as any computed
-	//    only attributes.
-
 	conn := r.Meta().WorkMailClient(ctx)
 
 	var plan resourceOrganizationModel
@@ -137,8 +118,6 @@ func (r *resourceOrganization) Create(ctx context.Context, req resource.CreateRe
 }
 
 func (r *resourceOrganization) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	// 5. Set the arguments and attributes
-
 	conn := r.Meta().WorkMailClient(ctx)
 
 	var state resourceOrganizationModel
@@ -158,7 +137,6 @@ func (r *resourceOrganization) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
-	// TIP: -- 5. Set the arguments and attributes
 	smerr.EnrichAppend(ctx, &resp.Diagnostics, flex.Flatten(ctx, out, &state))
 	if resp.Diagnostics.HasError() {
 		return
@@ -212,7 +190,7 @@ const (
 	statusDeleted  = "Deleted"
 )
 
-func waitOrganizationCreated(ctx context.Context, conn *workmail.Client, id string, timeout time.Duration) (*awstypes.Organization, error) {
+func waitOrganizationCreated(ctx context.Context, conn *workmail.Client, id string, timeout time.Duration) (*workmail.DescribeOrganizationOutput, error) {
 	stateConf := &retry.StateChangeConf{
 		Pending:                   []string{statusCreating},
 		Target:                    []string{statusActive},
@@ -230,7 +208,7 @@ func waitOrganizationCreated(ctx context.Context, conn *workmail.Client, id stri
 	return nil, smarterr.NewError(err)
 }
 
-func waitOrganizationDeleted(ctx context.Context, conn *workmail.Client, id string, timeout time.Duration) (*awstypes.Organization, error) {
+func waitOrganizationDeleted(ctx context.Context, conn *workmail.Client, id string, timeout time.Duration) (*workmail.DescribeOrganizationOutput, error) {
 	stateConf := &retry.StateChangeConf{
 		Pending: []string{statusDeleting, statusActive},
 		Target:  []string{statusDeleted},
@@ -239,7 +217,7 @@ func waitOrganizationDeleted(ctx context.Context, conn *workmail.Client, id stri
 	}
 
 	outputRaw, err := stateConf.WaitForStateContext(ctx)
-	if out, ok := outputRaw.(*workmail.Organization); ok {
+	if out, ok := outputRaw.(*workmail.DescribeOrganizationOutput); ok {
 		return out, smarterr.NewError(err)
 	}
 
@@ -286,8 +264,6 @@ func findOrganizationByID(ctx context.Context, conn *workmail.Client, id string)
 	return out, nil
 }
 
-// See more:
-// https://developer.hashicorp.com/terraform/plugin/framework/handling-data/accessing-values
 type resourceOrganizationModel struct {
 	framework.WithRegionModel
 	ARN         types.String   `tfsdk:"arn"`
