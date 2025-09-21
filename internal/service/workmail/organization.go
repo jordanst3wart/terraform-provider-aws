@@ -21,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	sdkid "github.com/hashicorp/terraform-plugin-sdk/v2/helper/id"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-provider-aws/internal/conns"
 	"github.com/hashicorp/terraform-provider-aws/internal/errs"
@@ -77,6 +78,9 @@ func (r *resourceOrganization) Schema(ctx context.Context, req resource.SchemaRe
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
+			names.AttrTimeouts: timeouts.Attributes(ctx, timeouts.Opts{
+				Create: true,
+			}),
 		},
 	}
 }
@@ -99,22 +103,21 @@ func (r *resourceOrganization) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	// TIP: -- 3. Populate a Create input structure
 	var input workmail.CreateOrganizationInput
-	input.Alias = plan.ComplexArgument
-	// TIP: Using a field name prefix allows mapping fields such as `ID` to `OrganizationId`
-	smerr.EnrichAppend(ctx, &resp.Diagnostics, flex.Expand(ctx, plan, &input, flex.WithFieldNamePrefix("Organization")))
+	smerr.EnrichAppend(ctx, &resp.Diagnostics, flex.Expand(ctx, plan, &input))
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	// Additional fields.
+	input.ClientToken = aws.String(sdkid.UniqueId())
 
 	out, err := conn.CreateOrganization(ctx, &input)
 	if err != nil {
-		smerr.AddError(ctx, &resp.Diagnostics, err, smerr.ID, plan.Name.String())
+		smerr.AddError(ctx, &resp.Diagnostics, err, smerr.ID, plan.Alias.String())
 		return
 	}
 	if out == nil || out.OrganizationId == nil {
-		smerr.AddError(ctx, &resp.Diagnostics, errors.New("empty output"), smerr.ID, plan.Name.String())
+		smerr.AddError(ctx, &resp.Diagnostics, errors.New("empty output"), smerr.ID, plan.Alias.String())
 		return
 	}
 
@@ -126,7 +129,7 @@ func (r *resourceOrganization) Create(ctx context.Context, req resource.CreateRe
 	createTimeout := r.CreateTimeout(ctx, plan.Timeouts)
 	_, err = waitOrganizationCreated(ctx, conn, plan.ID.ValueString(), createTimeout)
 	if err != nil {
-		smerr.AddError(ctx, &resp.Diagnostics, err, smerr.ID, plan.Name.String())
+		smerr.AddError(ctx, &resp.Diagnostics, err, smerr.ID, plan.Alias.String())
 		return
 	}
 
@@ -164,107 +167,21 @@ func (r *resourceOrganization) Read(ctx context.Context, req resource.ReadReques
 	smerr.EnrichAppend(ctx, &resp.Diagnostics, resp.State.Set(ctx, &state))
 }
 
-func (r *resourceOrganization) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	// TIP: ==== RESOURCE UPDATE ====
-	// Not all resources have Update functions. There are a few reasons:
-	// a. The AWS API does not support changing a resource
-	// b. All arguments have RequiresReplace() plan modifiers
-	// c. The AWS API uses a create call to modify an existing resource
-	//
-	// In the cases of a. and b., the resource will not have an update method
-	// defined. In the case of c., Update and Create can be refactored to call
-	// the same underlying function.
-	//
-	// The rest of the time, there should be an Update function and it should
-	// do the following things. Make sure there is a good reason if you don't
-	// do one of these.
-	//
-	// 4. Call the AWS modify/update function
-	conn := r.Meta().WorkMailClient(ctx)
-
-	var plan, state resourceOrganizationModel
-	smerr.EnrichAppend(ctx, &resp.Diagnostics, req.Plan.Get(ctx, &plan))
-	smerr.EnrichAppend(ctx, &resp.Diagnostics, req.State.Get(ctx, &state))
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	diff, d := flex.Diff(ctx, plan, state)
-	smerr.EnrichAppend(ctx, &resp.Diagnostics, d)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	if diff.HasChanges() {
-		var input workmail.UpdateOrganizationInput
-		smerr.EnrichAppend(ctx, &resp.Diagnostics, flex.Expand(ctx, plan, &input, flex.WithFieldNamePrefix("Test")))
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		// TIP: -- 4. Call the AWS modify/update function
-		out, err := conn.UpdateOrganization(ctx, &input)
-		if err != nil {
-			smerr.AddError(ctx, &resp.Diagnostics, err, smerr.ID, plan.ID.String())
-			return
-		}
-		if out == nil || out.Organization == nil {
-			smerr.AddError(ctx, &resp.Diagnostics, errors.New("empty output"), smerr.ID, plan.ID.String())
-			return
-		}
-
-		// TIP: Using the output from the update function, re-set any computed attributes
-		smerr.EnrichAppend(ctx, &resp.Diagnostics, flex.Flatten(ctx, out, &plan))
-		if resp.Diagnostics.HasError() {
-			return
-		}
-	}
-
-	updateTimeout := r.UpdateTimeout(ctx, plan.Timeouts)
-	_, err := waitOrganizationUpdated(ctx, conn, plan.ID.ValueString(), updateTimeout)
-	if err != nil {
-		smerr.AddError(ctx, &resp.Diagnostics, err, smerr.ID, plan.ID.String())
-		return
-	}
-
-	smerr.EnrichAppend(ctx, &resp.Diagnostics, resp.State.Set(ctx, &plan))
-}
-
 func (r *resourceOrganization) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	// TIP: ==== RESOURCE DELETE ====
-	// Most resources have Delete functions. There are rare situations
-	// where you might not need a delete:
-	// a. The AWS API does not provide a way to delete the resource
-	// b. The point of your resource is to perform an action (e.g., reboot a
-	//    server) and deleting serves no purpose.
-	//
-	// The Delete function should do the following things. Make sure there
-	// is a good reason if you don't do one of these.
-	//
-	// 1. Get a client connection to the relevant service
-	// 2. Fetch the state
-	// 3. Populate a delete input structure
-	// 4. Call the AWS delete function
-	// 5. Use a waiter to wait for delete to complete
-	// TIP: -- 1. Get a client connection to the relevant service
 	conn := r.Meta().WorkMailClient(ctx)
 
-	// TIP: -- 2. Fetch the state
 	var state resourceOrganizationModel
 	smerr.EnrichAppend(ctx, &resp.Diagnostics, req.State.Get(ctx, &state))
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// TIP: -- 3. Populate a delete input structure
 	input := workmail.DeleteOrganizationInput{
 		OrganizationId: state.ID.ValueStringPointer(),
+		ClientToken:    aws.String(sdkid.UniqueId()),
 	}
 
-	// TIP: -- 4. Call the AWS delete function
 	_, err := conn.DeleteOrganization(ctx, &input)
-	// TIP: On rare occassions, the API returns a not found error after deleting a
-	// resource. If that happens, we don't want it to show up as an error.
 	if err != nil {
 		if errs.IsA[*awstypes.ResourceNotFoundException](err) {
 			return
@@ -274,7 +191,6 @@ func (r *resourceOrganization) Delete(ctx context.Context, req resource.DeleteRe
 		return
 	}
 
-	// TIP: -- 5. Use a waiter to wait for delete to complete
 	deleteTimeout := r.DeleteTimeout(ctx, state.Timeouts)
 	_, err = waitOrganizationDeleted(ctx, conn, state.ID.ValueString(), deleteTimeout)
 	if err != nil {
@@ -283,45 +199,23 @@ func (r *resourceOrganization) Delete(ctx context.Context, req resource.DeleteRe
 	}
 }
 
-// TIP: ==== TERRAFORM IMPORTING ====
-// If Read can get all the information it needs from the Identifier
-// (i.e., path.Root("id")), you can use the PassthroughID importer. Otherwise,
-// you'll need a custom import function.
-//
-// See more:
-// https://developer.hashicorp.com/terraform/plugin/framework/resources/import
 func (r *resourceOrganization) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root(names.AttrID), req, resp)
 }
 
-// TIP: ==== STATUS CONSTANTS ====
-// Create constants for states and statuses if the service does not
-// already have suitable constants. We prefer that you use the constants
-// provided in the service if available (e.g., awstypes.StatusInProgress).
 const (
-	statusChangePending = "Pending"
-	statusDeleting      = "Deleting"
-	statusNormal        = "Normal"
-	statusUpdated       = "Updated"
+	// TODO need to verify these are connect, i wish these where in awstypes...
+	// could be "Requested"
+	statusCreating = "Creating"
+	statusDeleting = "Deleting"
+	statusActive   = "Active"
+	statusDeleted  = "Deleted"
 )
 
-// TIP: ==== WAITERS ====
-// Some resources of some services have waiters provided by the AWS API.
-// Unless they do not work properly, use them rather than defining new ones
-// here.
-//
-// Sometimes we define the wait, status, and find functions in separate
-// files, wait.go, status.go, and find.go. Follow the pattern set out in the
-// service and define these where it makes the most sense.
-//
-// If these functions are used in the _test.go file, they will need to be
-// exported (i.e., capitalized).
-//
-// You will need to adjust the parameters and names to fit the service.
 func waitOrganizationCreated(ctx context.Context, conn *workmail.Client, id string, timeout time.Duration) (*awstypes.Organization, error) {
 	stateConf := &retry.StateChangeConf{
-		Pending:                   []string{},
-		Target:                    []string{statusNormal},
+		Pending:                   []string{statusCreating},
+		Target:                    []string{statusActive},
 		Refresh:                   statusOrganization(ctx, conn, id),
 		Timeout:                   timeout,
 		NotFoundChecks:            20,
@@ -329,41 +223,17 @@ func waitOrganizationCreated(ctx context.Context, conn *workmail.Client, id stri
 	}
 
 	outputRaw, err := stateConf.WaitForStateContext(ctx)
-	if out, ok := outputRaw.(*workmail.Organization); ok {
+	if out, ok := outputRaw.(*workmail.DescribeOrganizationOutput); ok {
 		return out, smarterr.NewError(err)
 	}
 
 	return nil, smarterr.NewError(err)
 }
 
-// TIP: It is easier to determine whether a resource is updated for some
-// resources than others. The best case is a status flag that tells you when
-// the update has been fully realized. Other times, you can check to see if a
-// key resource argument is updated to a new value or not.
-func waitOrganizationUpdated(ctx context.Context, conn *workmail.Client, id string, timeout time.Duration) (*awstypes.Organization, error) {
-	stateConf := &retry.StateChangeConf{
-		Pending:                   []string{statusChangePending},
-		Target:                    []string{statusUpdated},
-		Refresh:                   statusOrganization(ctx, conn, id),
-		Timeout:                   timeout,
-		NotFoundChecks:            20,
-		ContinuousTargetOccurence: 2,
-	}
-
-	outputRaw, err := stateConf.WaitForStateContext(ctx)
-	if out, ok := outputRaw.(*workmail.Organization); ok {
-		return out, smarterr.NewError(err)
-	}
-
-	return nil, smarterr.NewError(err)
-}
-
-// TIP: A deleted waiter is almost like a backwards created waiter. There may
-// be additional pending states, however.
 func waitOrganizationDeleted(ctx context.Context, conn *workmail.Client, id string, timeout time.Duration) (*awstypes.Organization, error) {
 	stateConf := &retry.StateChangeConf{
-		Pending: []string{statusDeleting, statusNormal},
-		Target:  []string{},
+		Pending: []string{statusDeleting, statusActive},
+		Target:  []string{statusDeleted},
 		Refresh: statusOrganization(ctx, conn, id),
 		Timeout: timeout,
 	}
@@ -376,13 +246,7 @@ func waitOrganizationDeleted(ctx context.Context, conn *workmail.Client, id stri
 	return nil, smarterr.NewError(err)
 }
 
-// TIP: ==== STATUS ====
-// The status function can return an actual status when that field is
-// available from the API (e.g., out.Status). Otherwise, you can use custom
-// statuses to communicate the states of the resource.
-//
-// Waiters consume the values returned by status functions. Design status so
-// that it can be reused by a create, update, and delete waiter, if possible.
+// TODO need to verify out.State responses.
 func statusOrganization(ctx context.Context, conn *workmail.Client, id string) retry.StateRefreshFunc {
 	return func() (any, string, error) {
 		out, err := findOrganizationByID(ctx, conn, id)
@@ -393,12 +257,11 @@ func statusOrganization(ctx context.Context, conn *workmail.Client, id string) r
 		if err != nil {
 			return nil, "", smarterr.NewError(err)
 		}
-		// out.State???
-		return out, aws.ToString(out.Status), nil
+
+		return out, aws.ToString(out.State), nil
 	}
 }
 
-// TODO should probably return an organization summary, awstypes.organziationSummary
 func findOrganizationByID(ctx context.Context, conn *workmail.Client, id string) (*workmail.DescribeOrganizationOutput, error) {
 	input := workmail.DescribeOrganizationInput{
 		OrganizationId: aws.String(id),
@@ -427,10 +290,11 @@ func findOrganizationByID(ctx context.Context, conn *workmail.Client, id string)
 // https://developer.hashicorp.com/terraform/plugin/framework/handling-data/accessing-values
 type resourceOrganizationModel struct {
 	framework.WithRegionModel
-	ARN         types.String `tfsdk:"arn"`
-	Description types.String `tfsdk:"description"`
-	ID          types.String `tfsdk:"id"` // TODO might be organisationId
-	Alias       types.String `tfsdk:"alias"`
+	ARN         types.String   `tfsdk:"arn"`
+	Description types.String   `tfsdk:"description"`
+	ID          types.String   `tfsdk:"id"` // TODO might be organisationId
+	Alias       types.String   `tfsdk:"alias"`
+	Timeouts    timeouts.Value `tfsdk:"timeouts"`
 }
 
 func sweepOrganizations(ctx context.Context, client *conns.AWSClient) ([]sweep.Sweepable, error) {
