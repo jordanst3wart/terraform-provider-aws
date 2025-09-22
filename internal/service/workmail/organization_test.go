@@ -40,14 +40,14 @@ func TestAccWorkMailOrganization_basic(t *testing.T) {
 		t.Skip("skipping long-running test in short mode")
 	}
 
-	var organization workmail.DescribeOrganizationResponse
+	var organization workmail.DescribeOrganizationOutput
 	rAlias := sdkacctest.RandomWithPrefix(acctest.ResourcePrefix)
 	resourceName := "aws_workmail_organization.test"
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.PreCheck(ctx, t)
-			acctest.PreCheckPartitionHasService(t, names.WorkMailEndpointID)
+			acctest.PreCheckPartitionHasService(t, names.WorkMailServiceID)
 			testAccPreCheck(ctx, t)
 		},
 		ErrorCheck:               acctest.ErrorCheck(t, names.WorkMailServiceID),
@@ -94,7 +94,7 @@ func TestAccWorkMailOrganization_disappears(t *testing.T) {
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.PreCheck(ctx, t)
-			acctest.PreCheckPartitionHasService(t, names.WorkMailEndpointID)
+			acctest.PreCheckPartitionHasService(t, names.WorkMailServiceID)
 			testAccPreCheck(ctx, t)
 		},
 		ErrorCheck:               acctest.ErrorCheck(t, names.WorkMailServiceID),
