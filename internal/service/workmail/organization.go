@@ -126,7 +126,7 @@ func (r *resourceOrganization) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
-	out, err := findOrganizationByID(ctx, conn, state.ID.ValueString())
+	out, err := FindOrganizationByID(ctx, conn, state.ID.ValueString())
 	if tfresource.NotFound(err) {
 		resp.Diagnostics.Append(fwdiag.NewResourceNotFoundWarningDiagnostic(err))
 		resp.State.RemoveResource(ctx)
@@ -227,7 +227,7 @@ func waitOrganizationDeleted(ctx context.Context, conn *workmail.Client, id stri
 // TODO need to verify out.State responses.
 func statusOrganization(ctx context.Context, conn *workmail.Client, id string) retry.StateRefreshFunc {
 	return func() (any, string, error) {
-		out, err := findOrganizationByID(ctx, conn, id)
+		out, err := FindOrganizationByID(ctx, conn, id)
 		if tfresource.NotFound(err) {
 			return nil, "", nil
 		}
@@ -240,7 +240,7 @@ func statusOrganization(ctx context.Context, conn *workmail.Client, id string) r
 	}
 }
 
-func findOrganizationByID(ctx context.Context, conn *workmail.Client, id string) (*workmail.DescribeOrganizationOutput, error) {
+func FindOrganizationByID(ctx context.Context, conn *workmail.Client, id string) (*workmail.DescribeOrganizationOutput, error) {
 	input := workmail.DescribeOrganizationInput{
 		OrganizationId: aws.String(id),
 	}
