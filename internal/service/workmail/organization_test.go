@@ -34,8 +34,6 @@ import (
 // Acceptance test access AWS and cost money to run.
 func TestAccWorkMailOrganization_basic(t *testing.T) {
 	ctx := acctest.Context(t)
-	// TIP: This is a long-running test guard for tests that run longer than
-	// 300s (5 min) generally.
 	if testing.Short() {
 		t.Skip("skipping long-running test in short mode")
 	}
@@ -133,9 +131,6 @@ func testAccCheckOrganizationDestroy(ctx context.Context) resource.TestCheckFunc
 				continue
 			}
 
-			// TIP: ==== FINDERS ====
-			// The find function should be exported. Since it won't be used outside of the package, it can be exported
-			// in the `exports_test.go` file.
 			_, err := tfworkmail.FindOrganizationByID(ctx, conn, rs.Primary.ID)
 			if tfresource.NotFound(err) {
 				return nil
@@ -192,8 +187,8 @@ func testAccPreCheck(ctx context.Context, t *testing.T) {
 
 func testAccCheckOrganizationNotRecreated(before, after *workmail.DescribeOrganizationOutput) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
-		if before, after := aws.ToString(before.OrganizationId), aws.ToString(after.OrganizationId); before != after {
-			return create.Error(names.WorkMail, create.ErrActionCheckingNotRecreated, tfworkmail.ResNameOrganization, aws.ToString(before.OrganizationId), errors.New("recreated"))
+		if beforeStr, afterStr := aws.ToString(before.OrganizationId), aws.ToString(after.OrganizationId); beforeStr != afterStr {
+			return create.Error(names.WorkMail, create.ErrActionCheckingNotRecreated, tfworkmail.ResNameOrganization, beforeStr, errors.New("recreated"))
 		}
 
 		return nil
