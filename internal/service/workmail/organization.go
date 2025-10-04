@@ -59,10 +59,7 @@ func (r *resourceOrganization) Schema(ctx context.Context, _ resource.SchemaRequ
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			names.AttrARN: framework.ARNAttributeComputedOnly(),
-			names.AttrDescription: schema.StringAttribute{
-				Optional: true,
-			},
-			names.AttrID: framework.IDAttribute(), // OrganizationId
+			names.AttrID:  framework.IDAttribute(), // OrganizationId
 			names.AttrAlias: schema.StringAttribute{
 				Required: true,
 				PlanModifiers: []planmodifier.String{
@@ -156,6 +153,12 @@ func (r *resourceOrganization) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
+	// resource in delete state
+	if aws.ToString(out.State) == statusDeleted {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
 	// add missing values
 	state.ID = fwflex.StringToFramework(ctx, out.OrganizationId)
 	state.ARN = fwflex.StringToFramework(ctx, out.ARN)
@@ -177,12 +180,28 @@ func (r *resourceOrganization) Delete(ctx context.Context, req resource.DeleteRe
 		return
 	}
 
+	out, err := FindOrganizationByID(ctx, conn, state.ID.ValueString())
+
+	if tfresource.NotFound(err) {
+		return
+	}
+
+	if err != nil {
+		smerr.AddError(ctx, &resp.Diagnostics, err, smerr.ID, state.ID.String())
+		return
+	}
+
+	// already deleted
+	if aws.ToString(out.State) == statusDeleted {
+		return
+	}
+
 	input := workmail.DeleteOrganizationInput{
 		OrganizationId: state.ID.ValueStringPointer(),
 		ClientToken:    aws.String(sdkid.UniqueId()),
 	}
 
-	_, err := conn.DeleteOrganization(ctx, &input)
+	_, err = conn.DeleteOrganization(ctx, &input)
 	if err != nil {
 		if errs.IsA[*awstypes.ResourceNotFoundException](err) {
 			return
@@ -205,17 +224,16 @@ func (r *resourceOrganization) ImportState(ctx context.Context, req resource.Imp
 }
 
 const (
-	// TODO need to verify these are connect, i wish these where in awstypes...
-	// could be "Requested"
-	statusCreating = "Creating"
-	statusDeleting = "Deleting"
-	statusActive   = "Active"
-	statusDeleted  = "Deleted"
+	statusRequested = "Requested"
+	statusCreating  = "Creating"
+	statusDeleting  = "Deleting"
+	statusActive    = "Active"
+	statusDeleted   = "Deleted"
 )
 
 func waitOrganizationCreated(ctx context.Context, conn *workmail.Client, id string, timeout time.Duration) (*workmail.DescribeOrganizationOutput, error) {
 	stateConf := &retry.StateChangeConf{
-		Pending:                   []string{statusCreating},
+		Pending:                   []string{statusRequested, statusCreating},
 		Target:                    []string{statusActive},
 		Refresh:                   statusOrganization(ctx, conn, id),
 		Timeout:                   timeout,
@@ -233,7 +251,7 @@ func waitOrganizationCreated(ctx context.Context, conn *workmail.Client, id stri
 
 func waitOrganizationDeleted(ctx context.Context, conn *workmail.Client, id string, timeout time.Duration) (*workmail.DescribeOrganizationOutput, error) {
 	stateConf := &retry.StateChangeConf{
-		Pending: []string{statusDeleting, statusActive},
+		Pending: []string{statusDeleting},
 		Target:  []string{statusDeleted},
 		Refresh: statusOrganization(ctx, conn, id),
 		Timeout: timeout,
@@ -247,7 +265,6 @@ func waitOrganizationDeleted(ctx context.Context, conn *workmail.Client, id stri
 	return nil, smarterr.NewError(err)
 }
 
-// TODO need to verify out.State responses.
 func statusOrganization(ctx context.Context, conn *workmail.Client, id string) retry.StateRefreshFunc {
 	return func() (any, string, error) {
 		out, err := FindOrganizationByID(ctx, conn, id)
@@ -289,11 +306,10 @@ func FindOrganizationByID(ctx context.Context, conn *workmail.Client, id string)
 
 type resourceOrganizationModel struct {
 	framework.WithRegionModel
-	ARN         types.String   `tfsdk:"arn"`
-	Description types.String   `tfsdk:"description"`
-	ID          types.String   `tfsdk:"id"` // TODO might be organisationId
-	Alias       types.String   `tfsdk:"alias"`
-	Timeouts    timeouts.Value `tfsdk:"timeouts"`
+	ARN      types.String   `tfsdk:"arn"`
+	ID       types.String   `tfsdk:"id"` // from organisationId
+	Alias    types.String   `tfsdk:"alias"`
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 func sweepOrganizations(ctx context.Context, client *conns.AWSClient) ([]sweep.Sweepable, error) {

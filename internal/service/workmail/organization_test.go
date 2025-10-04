@@ -26,13 +26,6 @@ import (
 	tfworkmail "github.com/hashicorp/terraform-provider-aws/internal/service/workmail"
 )
 
-// TIP: ==== ACCEPTANCE TESTS ====
-// This is an example of a basic acceptance test. This should test as much of
-// standard functionality of the resource as possible, and test importing, if
-// applicable. We prefix its name with "TestAcc", the service, and the
-// resource name.
-//
-// Acceptance test access AWS and cost money to run.
 func TestAccWorkMailOrganization_basic(t *testing.T) {
 	ctx := acctest.Context(t)
 	if testing.Short() {
@@ -57,24 +50,14 @@ func TestAccWorkMailOrganization_basic(t *testing.T) {
 				Config: testAccOrganizationConfig_basic(rAlias),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testAccCheckOrganizationExists(ctx, resourceName, &organization),
-					resource.TestCheckResourceAttr(resourceName, "auto_minor_version_upgrade", "false"),
-					resource.TestCheckResourceAttrSet(resourceName, "maintenance_window_start_time.0.day_of_week"),
-					resource.TestCheckTypeSetElemNestedAttrs(resourceName, "user.*", map[string]string{
-						"console_access": "false",
-						"groups.#":       "0",
-						"username":       "Test",
-						"password":       "TestTest1234",
-					}),
-					// TIP: If the ARN can be partially or completely determined by the parameters passed, e.g. it contains the
-					// value of `rName`, either include the values in the regex or check for an exact match using `acctest.CheckResourceAttrRegionalARN`
-					acctest.MatchResourceAttrRegionalARN(ctx, resourceName, names.AttrARN, "workmail", regexache.MustCompile(`organization:.+$`)),
+					resource.TestCheckResourceAttr(resourceName, "alias", rAlias),
+					acctest.MatchResourceAttrRegionalARN(ctx, resourceName, names.AttrARN, "workmail", regexache.MustCompile(`organization/.`)),
 				),
 			},
 			{
-				ResourceName:            resourceName,
-				ImportState:             true,
-				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"apply_immediately", "user"},
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
 			},
 		},
 	})
@@ -87,6 +70,7 @@ func TestAccWorkMailOrganization_disappears(t *testing.T) {
 	}
 
 	var organization workmail.DescribeOrganizationOutput
+	// TODO remove
 	// AWS_DEFAULT_REGION=us-east-1
 	// AWS_PROFILE=default
 	// TF_ACC=1
@@ -108,12 +92,6 @@ func TestAccWorkMailOrganization_disappears(t *testing.T) {
 				Config: testAccOrganizationConfig_basic(rAlias),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testAccCheckOrganizationExists(ctx, resourceName, &organization),
-					// TIP: The Plugin-Framework disappears helper is similar to the Plugin-SDK version,
-					// but expects a new resource factory function as the third argument. To expose this
-					// private function to the testing package, you may need to add a line like the following
-					// to exports_test.go:
-					//
-					//   var ResourceOrganization = newResourceOrganization
 					acctest.CheckFrameworkResourceDisappears(ctx, acctest.Provider, tfworkmail.ResourceOrganization, resourceName),
 				),
 				ExpectNonEmptyPlan: true,
@@ -136,12 +114,16 @@ func testAccCheckOrganizationDestroy(ctx context.Context) resource.TestCheckFunc
 				continue
 			}
 
-			_, err := tfworkmail.FindOrganizationByID(ctx, conn, rs.Primary.ID)
+			out, err := tfworkmail.FindOrganizationByID(ctx, conn, rs.Primary.ID)
 			if tfresource.NotFound(err) {
 				return nil
 			}
 			if err != nil {
 				return create.Error(names.WorkMail, create.ErrActionCheckingDestroyed, tfworkmail.ResNameOrganization, rs.Primary.ID, err)
+			}
+
+			if aws.ToString(out.State) == tfworkmail.StatusDeleted {
+				return nil
 			}
 
 			return create.Error(names.WorkMail, create.ErrActionCheckingDestroyed, tfworkmail.ResNameOrganization, rs.Primary.ID, errors.New("not destroyed"))
@@ -190,20 +172,9 @@ func testAccPreCheck(ctx context.Context, t *testing.T) {
 	}
 }
 
-func testAccCheckOrganizationNotRecreated(before, after *workmail.DescribeOrganizationOutput) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		if beforeStr, afterStr := aws.ToString(before.OrganizationId), aws.ToString(after.OrganizationId); beforeStr != afterStr {
-			return create.Error(names.WorkMail, create.ErrActionCheckingNotRecreated, tfworkmail.ResNameOrganization, beforeStr, errors.New("recreated"))
-		}
-
-		return nil
-	}
-}
-
 func testAccOrganizationConfig_basic(rAlias string) string {
 	return fmt.Sprintf(`
 resource "aws_workmail_organization" "test" {
-  description             = "some description"
   alias			          = %[1]q
 }
 `, rAlias)

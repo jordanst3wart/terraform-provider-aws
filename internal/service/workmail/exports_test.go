@@ -3,3 +3,4 @@
 package workmail
 
 var ResourceOrganization = newResourceOrganization
+var StatusDeleted = statusDeleted
