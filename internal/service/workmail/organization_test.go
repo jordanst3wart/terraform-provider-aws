@@ -70,11 +70,6 @@ func TestAccWorkMailOrganization_disappears(t *testing.T) {
 	}
 
 	var organization workmail.DescribeOrganizationOutput
-	// TODO remove
-	// AWS_DEFAULT_REGION=us-east-1
-	// AWS_PROFILE=default
-	// TF_ACC=1
-	// invalid resource type... resource not in provider
 	rAlias := sdkacctest.RandomWithPrefix(acctest.ResourcePrefix)
 	resourceName := "aws_workmail_organization.test"
 
