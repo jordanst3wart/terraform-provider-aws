@@ -106,9 +106,20 @@ func (r *resourceOrganization) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	// TODO need to find org for arn value...
-	// Set values for unknowns. Still need to set ARN, maybe just set in read
-	plan.ID = fwflex.StringToFramework(ctx, out.OrganizationId)
+	found, err := FindOrganizationByID(ctx, conn, *out.OrganizationId)
+	if tfresource.NotFound(err) {
+		resp.Diagnostics.Append(fwdiag.NewResourceNotFoundWarningDiagnostic(err))
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	if err != nil {
+		smerr.AddError(ctx, &resp.Diagnostics, err, smerr.ID, *out.OrganizationId)
+		return
+	}
+
+	// add missing values, arn is not returned after create
+	plan.ID = fwflex.StringToFramework(ctx, found.OrganizationId)
+	plan.ARN = fwflex.StringToFramework(ctx, found.ARN)
 
 	smerr.EnrichAppend(ctx, &resp.Diagnostics, flex.Flatten(ctx, out, &plan))
 	if resp.Diagnostics.HasError() {
@@ -146,8 +157,8 @@ func (r *resourceOrganization) Read(ctx context.Context, req resource.ReadReques
 	}
 
 	// add missing values
-	state.ARN = fwflex.StringToFramework(ctx, out.ARN)
 	state.ID = fwflex.StringToFramework(ctx, out.OrganizationId)
+	state.ARN = fwflex.StringToFramework(ctx, out.ARN)
 
 	smerr.EnrichAppend(ctx, &resp.Diagnostics, flex.Flatten(ctx, out, &state))
 	if resp.Diagnostics.HasError() {
