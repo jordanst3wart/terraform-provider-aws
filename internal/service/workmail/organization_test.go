@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/YakDriver/regexache"
@@ -45,7 +46,7 @@ func TestAccWorkMailOrganization_basic(t *testing.T) {
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.PreCheck(ctx, t)
-			acctest.PreCheckPartitionHasService(t, names.WorkMailServiceID)
+			acctest.PreCheckPartitionHasService(t, strings.ToLower(names.WorkMailServiceID)) // service is lower case
 			testAccPreCheck(ctx, t)
 		},
 		ErrorCheck:               acctest.ErrorCheck(t, names.WorkMailServiceID),
@@ -86,13 +87,17 @@ func TestAccWorkMailOrganization_disappears(t *testing.T) {
 	}
 
 	var organization workmail.DescribeOrganizationOutput
+	// AWS_DEFAULT_REGION=us-east-1
+	// AWS_PROFILE=default
+	// TF_ACC=1
+	// invalid resource type... resource not in provider
 	rAlias := sdkacctest.RandomWithPrefix(acctest.ResourcePrefix)
 	resourceName := "aws_workmail_organization.test"
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.PreCheck(ctx, t)
-			acctest.PreCheckPartitionHasService(t, names.WorkMailServiceID)
+			acctest.PreCheckPartitionHasService(t, strings.ToLower(names.WorkMailServiceID))
 			testAccPreCheck(ctx, t)
 		},
 		ErrorCheck:               acctest.ErrorCheck(t, names.WorkMailServiceID),
