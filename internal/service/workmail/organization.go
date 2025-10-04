@@ -26,6 +26,7 @@ import (
 	"github.com/hashicorp/terraform-provider-aws/internal/errs/fwdiag"
 	"github.com/hashicorp/terraform-provider-aws/internal/framework"
 	"github.com/hashicorp/terraform-provider-aws/internal/framework/flex"
+	fwflex "github.com/hashicorp/terraform-provider-aws/internal/framework/flex"
 	"github.com/hashicorp/terraform-provider-aws/internal/smerr"
 	"github.com/hashicorp/terraform-provider-aws/internal/sweep"
 	sweepfw "github.com/hashicorp/terraform-provider-aws/internal/sweep/framework"
@@ -105,6 +106,10 @@ func (r *resourceOrganization) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
+	// TODO need to find org for arn value...
+	// Set values for unknowns. Still need to set ARN, maybe just set in read
+	plan.ID = fwflex.StringToFramework(ctx, out.OrganizationId)
+
 	smerr.EnrichAppend(ctx, &resp.Diagnostics, flex.Flatten(ctx, out, &plan))
 	if resp.Diagnostics.HasError() {
 		return
@@ -139,6 +144,10 @@ func (r *resourceOrganization) Read(ctx context.Context, req resource.ReadReques
 		smerr.AddError(ctx, &resp.Diagnostics, err, smerr.ID, state.ID.String())
 		return
 	}
+
+	// add missing values
+	state.ARN = fwflex.StringToFramework(ctx, out.ARN)
+	state.ID = fwflex.StringToFramework(ctx, out.OrganizationId)
 
 	smerr.EnrichAppend(ctx, &resp.Diagnostics, flex.Flatten(ctx, out, &state))
 	if resp.Diagnostics.HasError() {
