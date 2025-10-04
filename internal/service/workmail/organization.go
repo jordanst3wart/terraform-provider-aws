@@ -68,8 +68,11 @@ func (r *resourceOrganization) Schema(ctx context.Context, _ resource.SchemaRequ
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			names.AttrTimeouts: timeouts.Attributes(ctx, timeouts.Opts{
+		},
+		Blocks: map[string]schema.Block{
+			names.AttrTimeouts: timeouts.Block(ctx, timeouts.Opts{
 				Create: true,
+				Delete: true,
 			}),
 		},
 	}
